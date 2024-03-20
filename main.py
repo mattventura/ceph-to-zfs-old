@@ -1,3 +1,4 @@
+import importlib
 import os
 import threading
 import time
@@ -8,6 +9,7 @@ from typing import Optional
 import libzfs
 
 from cephlibs.rados import Ioctx
+from configuration_options import *
 
 try:
     import rados
@@ -167,7 +169,7 @@ def do_backup(ceph_rbd_image: rbd.Image, zfs_dest: ZfsDatasetContext):
         with open(dev_path, 'rb+', 1024 * 1024 * 64, closefd=True) as dev:
             def callback_inner(offset: int, length: int, exists: bool):
                 # time.sleep(1)
-                print(f'[{img_name}] Thread: {threading.get_ident()}')
+                # print(f'[{img_name}] Thread: {threading.get_ident()}')
                 requested[0] += length
                 try:
                     dev.seek(offset, os.SEEK_SET)
@@ -177,8 +179,8 @@ def do_backup(ceph_rbd_image: rbd.Image, zfs_dest: ZfsDatasetContext):
                         f'[{img_name}]: FAILED WRITE - {length} bytes from {offset} to {offset + length - 1} (exists: {exists})\n{e}')
                     failures.append(e)
                     raise
-                print(
-                    f'[{img_name}]: Successful write - {length} bytes from {offset} to {offset + length - 1} (exists: {exists})')
+                # print(
+                #     f'[{img_name}]: Successful write - {length} bytes from {offset} to {offset + length - 1} (exists: {exists})')
                 written[0] += length
 
             # This is a third party function which calls 'callback' repeatedly
@@ -208,19 +210,19 @@ def do_backup(ceph_rbd_image: rbd.Image, zfs_dest: ZfsDatasetContext):
         raise
 
 
-class BackupController:
-    def __init__(self, ceph_pool: Ioctx, zfs_dest: ZfsContext):
+class PoolBackupController:
+    def __init__(self, ceph_pool: Ioctx, zfs_dest: ZfsContext, image_filter: ImageFilter):
         self.ceph_pool = ceph_pool
         self.zfs_dest = zfs_dest
         self.rbd = rbd.RBD()
+        self.image_filter = image_filter
 
     @property
     def all_image_names(self) -> list[str]:
         return self.rbd.list(self.ceph_pool)
 
     def should_backup_image(self, image_name: str) -> bool:
-        # return image_name == 'ceph-test-2'
-        return True
+        return self.image_filter.should_backup(image_name)
 
     @property
     def images_to_back_up(self) -> list[rbd.Image]:
@@ -239,23 +241,35 @@ class BackupController:
         print('Done with all')
 
 
+config = importlib.import_module('config')
+
+z = libzfs.ZFS()
+
+jobs: list[Job] = config.jobs
+
+for job in jobs:
+    cluster = rados.Rados(name='client.backups', conffile='/etc/ceph/ceph.conf', clustername='ceph')
+    # cc = job.cluster
+    # cluster = rados.Rados(name=cc.cluster_name, conffile=cc.conf_file, clustername=cc.cluster_name)
+    try:
+        cluster.connect()
+        pools: list[PoolConfig] = job.pools
+        for pool in pools:
+            with cluster.open_ioctx(pool.ceph_pool_name) as ctx:
+                # img_name = img.get_name()
+                zc = ZfsContext(z.get_dataset(pool.zfs_destination))
+                bc = PoolBackupController(ctx, zc, pool.image_filter)
+                bc.backup_all_images()
+    finally:
+        # TODO: is __exit__ the same here?
+        cluster.shutdown()
+
 # Connect to cluster
 cluster = rados.Rados(name='client.backups', conffile='/etc/ceph/ceph.conf', clustername='ceph')
 cluster.connect()
 # List pools
 # Open pool
 ctx: Ioctx = cluster.open_ioctx('vmstorage')
-
-z = libzfs.ZFS()
-
-# img_name = img.get_name()
-zc = ZfsContext(z.get_dataset('testpool/ceph-img-test'))
-# zdc = ZfsDatasetContext(zc, img_name)
-#
-# do_backup(img, zdc)
-
-bc = BackupController(ctx, zc)
-bc.backup_all_images()
 
 # TODO: confirmations for potentially bad things:
 # - reverting to common snapshot

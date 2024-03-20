@@ -1,5 +1,10 @@
 # Backup CephFS + RBD to ZFS
 
+## Current Status
+
+- RBD: Basic snapshotting and backup works
+- CephFS: Not started
+
 I love ZFS. One of the things I love about it is how easy it is to have high-quality backups of all of your ZFS data.
 Projects like [zrepl](https://github.com/zrepl/zrepl) can serve as a backup software solution for your ZFS filesystems
 and volumes. Plus, ZFS has native encryption support, and several features such as deduplication that can reduce the
@@ -34,7 +39,7 @@ For CephFS:
 
 This project aims to, in the long term, become an improvement over the alternatives in these areas:
 
-- Covers both CephFS and RBD (potentially RGW in the future).
+- Covers both CephFS and RBD (potentially RGW in the future if I can find a way to make it work well).
 - Allows the use of native ZFS features such as encryption and deduplication.
 - In addition, use of ZFS means you would be able to easily mount and access old snapshots, without having to restore.
 
