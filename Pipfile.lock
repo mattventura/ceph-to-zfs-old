@@ -1,0 +1,30 @@
+{
+    "_meta": {
+        "hash": {
+            "sha256": "f92890adc66d77478eb4f04064c59df09d6095da755cdc43965e45b5ded10bfa"
+        },
+        "pipfile-spec": 6,
+        "requires": {
+            "python_version": "3.10"
+        },
+        "sources": [
+            {
+                "name": "pypi",
+                "url": "https://pypi.org/simple",
+                "verify_ssl": true
+            }
+        ]
+    },
+    "default": {
+        "zfslib": {
+            "hashes": [
+                "sha256:062179ebd39f4ad1f6969882d5ecd33de04332082415a1b3016c0b83f905e3f6",
+                "sha256:3543efa15ce2a683846c4e1af267dd6d45bd6fb996ec7d934b18e70edc02add3"
+            ],
+            "index": "pypi",
+            "markers": "python_full_version >= '3.7.9' and python_full_version < '4.0.0'",
+            "version": "==0.12.0"
+        }
+    },
+    "develop": {}
+}
