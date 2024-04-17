@@ -4,8 +4,9 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-#zfslib = "*"
-libzfs = "*"
+# libzfs must be manually installed
+# ceph must be manually installed
+flask = "*"
 
 [dev-packages]
 
