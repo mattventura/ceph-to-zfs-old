@@ -1,3 +1,7 @@
+# Obsolete - This Project is Being Rewritten
+
+See [Ceph-to-ZFS](https://github.com/mattventura/ceph-to-zfs)
+
 # Backup CephFS + RBD to ZFS
 
 ## Current Status

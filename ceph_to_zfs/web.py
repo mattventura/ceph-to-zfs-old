@@ -79,7 +79,7 @@ class WebController:
         return {
             'name': item.name,
             'status_type': item.status_type.label,
-            'status_message': item.status,
+            'status_message': item.status_text,
             'children': [self.format_status_simple(child) for child in item.children.values()]
         }
 

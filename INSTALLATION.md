@@ -1,3 +1,13 @@
+# Python Dependencies
+
+You must manually install the libzfs and ceph libraries as they are not available in `pip`.
+```shell
+# (As root/sudo)
+apt install python3-libzfs python3-ceph
+```
+
+If using a virtual environment, be sure to include system-level packages.
+
 # Ceph Prep
 
 First, configure the host with an appropriate Ceph cluster connection which has adequate permissions.

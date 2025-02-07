@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 from collections import OrderedDict
 from typing import Callable
 
@@ -32,14 +33,14 @@ class Loggable:
         self.logger.log(msg)
 
     def set_status(self, status: str):
-        self.logger.status = status
+        self.logger.status_text = status
 
     def log_status(self, status_msg):
         self.logger.log_status(status_msg)
 
 
 def default_log_func(context_path: list[str], message: str):
-    print(f"[{' : '.join(context_path)}] {message}")
+    print(f"{datetime.datetime.now()} [{' : '.join(context_path)}] {message}")
 
 
 class JobLogger:
@@ -52,7 +53,7 @@ class JobLogger:
         self.include_parent = include_parent
         self.messages: list[str] = []
         self._children: OrderedDict[str, JobLogger] = OrderedDict()
-        self._status = 'Not Started'
+        self._status_text: str = self._status_type.label
         if log_func is None:
             if parent is None:
                 raise ValueError('Either parent or log_func must be specified')
@@ -81,7 +82,7 @@ class JobLogger:
 
     def log_status(self, status_msg, status_type: TaskStatus = None):
         self.log(status_msg)
-        self.status = status_msg
+        self.status_text = status_msg
         if status_type is not None:
             self.status_type = status_type
 
@@ -95,12 +96,13 @@ class JobLogger:
         return OrderedDict(self._children)
 
     @property
-    def status(self) -> str:
-        return self._status
+    def status_text(self) -> str:
+        return self._status_text
 
-    @status.setter
-    def status(self, status: TaskStatus):
-        self._status = status
+    @status_text.setter
+    def status_text(self, status_text: str):
+        assert isinstance(status_text, str)
+        self._status_text = status_text
 
     @property
     def status_type(self) -> TaskStatus:
@@ -108,10 +110,11 @@ class JobLogger:
 
     @status_type.setter
     def status_type(self, status_type: TaskStatus):
+        assert isinstance(status_type, TaskStatus)
         if status_type.is_terminal:
             for child in self.children.values():
                 if child.status_type == Not_Started:
-                    child.status = Skipped
+                    child.log_status('Skipped', Skipped)
         if status_type == Success:
             for child in self.children.values():
                 if child.status_type.is_bad:

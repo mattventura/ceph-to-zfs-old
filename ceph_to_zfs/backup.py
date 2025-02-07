@@ -1,4 +1,5 @@
 import os
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -16,12 +17,15 @@ except ModuleNotFoundError:
     import cephlibs.rados as rados
     import cephlibs.rbd as rbd
 
+from ceph_to_zfs.statuslogger import JobLogger, Loggable, Failed
 
-from ceph_to_zfs.statuslogger import JobLogger, Loggable
+
+def format_exception(e: Exception) -> str:
+    return ''.join(traceback.format_exception(e.__class__, e, e.__traceback__))
 
 
 def do_backup(log: JobLogger, ceph_rbd_image: rbd.Image, zfs_dest: ZfsDatasetContext):
-    log.status = 'Calculating backup'
+    log.status_text = 'Calculating backup'
     log.status_type = statuslogger.In_Progress
     try:
         # This is an incremental backup when possible, else full backup.
@@ -64,7 +68,9 @@ def do_backup(log: JobLogger, ceph_rbd_image: rbd.Image, zfs_dest: ZfsDatasetCon
         requested = [0]
         written = [0]
         failures = []
-        with open(dev_path, 'rb+', 1024 * 1024 * 64, closefd=True) as dev:
+        # TODO: if the system is slow, this will not work correctly, as udev can't fix disk permissions fast enough
+        # with open(dev_path, 'rb+', 1024 * 1024 * 64, closefd=True) as dev:
+        with open(dev_path, 'rb+', 0, closefd=True) as dev:
             def callback_inner(offset: int, length: int, exists: bool):
                 # time.sleep(1)
                 # print(f'[{img_name}] Thread: {threading.get_ident()}')
@@ -72,6 +78,7 @@ def do_backup(log: JobLogger, ceph_rbd_image: rbd.Image, zfs_dest: ZfsDatasetCon
                 try:
                     dev.seek(offset, os.SEEK_SET)
                     dev.write(ceph_rbd_image.read(offset, length, 0))
+                    dev.flush()
                 except Exception as e:
                     log.log(
                         f'FAILED WRITE - {length} bytes from {offset} to {offset + length - 1} (exists: {exists})\n{e}')
@@ -81,7 +88,7 @@ def do_backup(log: JobLogger, ceph_rbd_image: rbd.Image, zfs_dest: ZfsDatasetCon
                 #     f'[{img_name}]: Successful write - {length} bytes from {offset} to {offset + length - 1} (exists: {exists})')
                 written[0] += length
 
-            log.log_status('Beginning writing')
+            log.log_status('Writing data')
             # This is a third party function which calls 'callback' repeatedly
             ceph_rbd_image.diff_iterate(
                 offset=0,
@@ -95,22 +102,20 @@ def do_backup(log: JobLogger, ceph_rbd_image: rbd.Image, zfs_dest: ZfsDatasetCon
 
             log.log_status('Flushing')
             dev.flush()
-            log.log(f'Flushed')
+            log.log_status(f'Flushed')
 
         if failures:
-            log.log_status(f'FAILED! Wrote {written[0]}/{requested[0]} bytes to {dev_path}')
+            log.log_status(f'FAILED! One or more writes failed, see log. Wrote {written[0]}/{requested[0]} bytes to {dev_path}')
             raise Exception(f'There were {len(failures)} failure(s)!!! Not snapshotting!')
         else:
             log.log_status(f'Finished writing {written[0]}/{requested[0]} bytes to {dev_path}')
 
         log.log_status(f'Creating snapshot {zfs_dest.zfs_path}@{new_snap_name}')
         zfs_dest.create_snapshot(new_snap_name)
-        log.log_status(f'Finalized destination snapshot {zfs_dest.zfs_path}@{new_snap_name}')
-        log.status_type = statuslogger.Success
+        log.log_status(f'Finalized destination snapshot {zfs_dest.zfs_path}@{new_snap_name}', statuslogger.Success)
     except Exception as e:
-        log.status = f'FAILED!'
-        log.status_type = statuslogger.Failed
-        log.log(f'Error in {ceph_rbd_image.get_name}: {e}')
+        log.log_status(f'FAILED! {e}', statuslogger.Failed)
+        log.log(f'Error in {ceph_rbd_image.get_name()}: {format_exception(e)}')
         raise
 
 
@@ -138,14 +143,19 @@ class PoolBackupController(Loggable):
     def backup_all_images(self):
         images = self.images_to_back_up
         self.log(f'Going to back up {len(images)} images')
-        with ThreadPoolExecutor(max_workers=16) as pool:
+        with ThreadPoolExecutor(max_workers=2) as pool:
             for image in images:
                 image_context = self.logger.make_or_replace_child(image.get_name(), True)
-                image_context.status = 'Starting'
+                image_context.status_text = 'Starting'
                 zdc = ZfsDatasetContext(image_context, self.zfs_dest, image.get_name())
                 image_context.log_status(f'Backing up image {image.get_name()} to {zdc.zfs_path}')
-                pool.submit(lambda: do_backup(image_context, image, zdc))
+
+                def backf(image_context=image_context, image=image, zdc=zdc):
+                    try:
+                        do_backup(image_context, image, zdc)
+                    except Exception as e:
+                        image_context.log_status(f"Image {image.get_name()} failed! Exception: {e}", Failed)
+
+                pool.submit(backf)
             pool.shutdown(wait=True, cancel_futures=False)
         self.log_status('Complete')
-
-

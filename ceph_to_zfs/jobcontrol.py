@@ -30,29 +30,29 @@ class JobControl:
         job_logger = self.job_logger
         try:
             job = self.job
-            job_logger.status_type = Preparing
-            job_logger.status = 'Connecting to cluster'
+            job_logger.log_status('Connecting to cluster', Preparing)
             cc = job.cluster
+            job_logger.log('Cluster details: {}'.format(cc))
             with rados.Rados(name=cc.auth_name, conffile=cc.conf_file, clustername=cc.cluster_name) as cluster:
-                job_logger.status = 'In progress'
+                job_logger.log_status('In progress')
                 pools: list[PoolConfig] = job.pools
                 # TODO: parallelize
                 for pool in pools:
                     pool_logger = job_logger.make_or_replace_child(pool.ceph_pool_name, True)
                     pool_logger.log_status('Starting pool backup', In_Progress)
                     with cluster.open_ioctx(pool.ceph_pool_name) as ctx:
-                        pool_logger.status = 'In progress'
+                        pool_logger.status_text = 'In progress'
                         # img_name = img.get_name()
                         zc = ZfsContext(pool_logger, z.get_dataset(pool.zfs_destination))
                         bc = PoolBackupController(pool_logger, ctx, zc, pool.image_filter)
                         bc.backup_all_images()
-                        pool_logger.status = 'Complete'
+                        pool_logger.status_text = 'Complete'
                         pool_logger.status_type = Success
-                job_logger.status = 'Complete'
+                job_logger.status_text = 'Complete'
                 job_logger.status_type = Success
         except Exception as e:
             job_logger.log(f'Failure: {e}')
-            job_logger.log_status('Failed!', status_type=Failed)
+            job_logger.log_status(f'Failed! {e}', status_type=Failed)
 
 
 class GlobalControl:
